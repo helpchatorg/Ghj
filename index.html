@@ -107,16 +107,16 @@
             55%  { opacity: 1; }
             100% { opacity: 1; transform: none; }
         }
-        #check-seat-availability-modal, #public-reg-modal, #wl-status-overlay, #mark-att-overlay, #public-feedback-modal, #sampol-overlay.sampol-open {
+        #check-seat-availability-modal, #public-reg-modal, #check-status-overlay, #mark-att-overlay, #public-feedback-modal, #sampol-overlay.sampol-open {
             animation: sam-ov-in 0.3s ease both;
         }
-        #check-seat-availability-modal > div, #public-reg-modal > div, #wl-status-overlay > div, #mark-att-overlay > div,
+        #check-seat-availability-modal > div, #public-reg-modal > div, #check-status-overlay > div, #mark-att-overlay > div,
         #public-feedback-modal > .modal-content, #sampol-overlay.sampol-open > .sampol-card {
             animation: sam-pop-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
         @media (prefers-reduced-motion: reduce) {
-            #check-seat-availability-modal, #public-reg-modal, #wl-status-overlay, #mark-att-overlay, #public-feedback-modal, #sampol-overlay.sampol-open,
-            #check-seat-availability-modal > div, #public-reg-modal > div, #wl-status-overlay > div, #mark-att-overlay > div,
+            #check-seat-availability-modal, #public-reg-modal, #check-status-overlay, #mark-att-overlay, #public-feedback-modal, #sampol-overlay.sampol-open,
+            #check-seat-availability-modal > div, #public-reg-modal > div, #check-status-overlay > div, #mark-att-overlay > div,
             #public-feedback-modal > .modal-content, #sampol-overlay.sampol-open > .sampol-card { animation: none; }
         }
 
@@ -193,11 +193,12 @@
             box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
         }
         .nav-item {
-            flex: 1; text-align: center; padding: 13px 8px 10px;
+            flex: 1; text-align: center; padding: 13px 3px 10px;
             font-weight: 700; color: var(--grey);
             cursor: pointer; font-size: 0.72rem;
             transition: all 0.2s; position: relative;
             line-height: 1.3;
+            white-space: nowrap;   /* icon stays in front of the word, never above it */
         }
         .nav-item.active {
             color: var(--primary);
@@ -4604,77 +4605,59 @@
     <img id="zoomed-img" src="" alt="Zoomed Photo">
 </div>
 
-<!-- ===== WAITING LIST STATUS CHECK (pre-login) ===== -->
-<!-- ===== CHECK STATUS (login page): choose Waiting List status or Registration status ===== -->
+<!-- ===== CHECK STATUS (login page): switch between Waiting List status and Registration status ===== -->
 <div id="check-status-overlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:9999; align-items:center; justify-content:center; padding:16px;">
-    <div style="background:#fff; border-radius:18px; padding:22px; width:100%; max-width:380px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+    <div style="background:#fff; border-radius:18px; padding:22px; width:100%; max-width:380px; max-height:85vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
             <h3 style="margin:0; font-family:'Sora',sans-serif; color:var(--primary);">📋 Check Status</h3>
             <button onclick="closeCheckStatusChooser()" style="width:auto; padding:6px 12px; background:var(--grey); margin:0; font-size:0.7rem;">✕</button>
         </div>
-        <p style="font-size:0.75rem; color:var(--grey); margin:0 0 14px; line-height:1.5;">What would you like to check?</p>
-        <button onclick="closeCheckStatusChooser(); openWlStatusCheck();" style="background:#fff7ed; color:#9a3412; border:1.5px solid #fdba74; text-align:left; margin-bottom:10px; padding:14px;">
-            <div style="font-size:0.95rem; font-weight:800;">⏳ Waiting List Status</div>
-            <div style="font-size:0.72rem; font-weight:600; margin-top:3px;">Your position, wait and allotted seat</div>
-        </button>
-        <button onclick="closeCheckStatusChooser(); openRegStatusCheck();" style="background:#eff6ff; color:#1e40af; border:1.5px solid #93c5fd; text-align:left; margin:0; padding:14px;">
-            <div style="font-size:0.95rem; font-weight:800;">📝 Registration Status</div>
-            <div style="font-size:0.72rem; font-weight:600; margin-top:3px;">Status of the application you submitted online</div>
-        </button>
-    </div>
-</div>
+        <div class="login-tabs" role="tablist">
+            <button type="button" class="login-tab active" id="cs-tab-wl" role="tab" onclick="csSetTab('wl')">⏳ Waiting List</button>
+            <button type="button" class="login-tab" id="cs-tab-reg" role="tab" onclick="csSetTab('reg')">📝 Registration</button>
+        </div>
 
-<div id="reg-status-overlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:9999; align-items:center; justify-content:center; padding:16px;">
-    <div style="background:#fff; border-radius:18px; padding:22px; width:100%; max-width:380px; max-height:85vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h3 style="margin:0; font-family:'Sora',sans-serif; color:var(--primary);">📝 Registration Status</h3>
-            <button onclick="closeRegStatusCheck()" style="width:auto; padding:6px 12px; background:var(--grey); margin:0; font-size:0.7rem;">✕</button>
-        </div>
-        <div class="input-group" style="margin-bottom:8px;">
-            <label>Application Reference</label>
-            <div class="reg-prefix-group"><span>APP</span>
-                <input type="text" id="rsc-ref" inputmode="numeric" pattern="[0-9]*" maxlength="10" autocomplete="off" placeholder="Enter 10 digits" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10); rscClear()">
+        <div id="cs-panel-wl">
+            <div id="wl-status-search-step">
+                <div class="input-group">
+                    <label>Search By</label>
+                    <select id="wlStatusSearchType" onchange="toggleWlStatusSearchField()">
+                        <option value="mobile">📱 Mobile Number</option>
+                        <option value="id">🎫 Waiting List ID</option>
+                    </select>
+                </div>
+                <div class="input-group" id="wlStatusMobileGroup">
+                    <label>Mobile Number</label>
+                    <input type="number" id="wlStatusMobile" placeholder="Enter your registered mobile" oninput="if(value.length>10) value=value.slice(0,10); clearWlStatusResult();">
+                </div>
+                <div class="input-group" id="wlStatusIdGroup" style="display:none;">
+                    <label>Waiting List ID</label>
+                    <div class="reg-prefix-group">
+                        <span>WL</span>
+                        <input type="number" id="wlStatusId" placeholder="Enter 10 digits" oninput="if(value.length>10) value=value.slice(0,10); clearWlStatusResult();">
+                    </div>
+                </div>
+                <div class="error-msg" id="wl-status-err" style="display:none;"></div>
+                <button onclick="checkWlStatus()" style="background:#f59e0b;">🔍 Check Status</button>
             </div>
+            <div id="wl-status-result" style="margin-top:14px;"></div>
         </div>
-        <div class="input-group" style="margin-bottom:8px;">
-            <label>Mobile Number</label>
-            <input type="text" id="rsc-mobile" inputmode="numeric" pattern="[0-9]*" maxlength="10" autocomplete="off" placeholder="Enter 10-digit mobile number" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10); rscClear()" onkeydown="if(event.key==='Enter') regStatusCheck()">
-        </div>
-        <div class="error-msg" id="rsc-err" style="display:none;"></div>
-        <button onclick="regStatusCheck()" style="background:#0369a1;">🔍 Check Status</button>
-        <div id="rsc-result" style="margin-top:12px; font-size:0.76rem; line-height:1.55;"></div>
-    </div>
-</div>
 
-<div id="wl-status-overlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:9999; align-items:center; justify-content:center; padding:16px;">
-    <div style="background:#fff; border-radius:18px; padding:22px; width:100%; max-width:380px; max-height:85vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h3 style="margin:0; font-family:'Sora',sans-serif; color:var(--primary);">⏳ Waiting List Status</h3>
-            <button onclick="closeWlStatusCheck()" style="width:auto; padding:6px 12px; background:var(--grey); margin:0; font-size:0.7rem;">✕</button>
-        </div>
-        <div id="wl-status-search-step">
-            <div class="input-group">
-                <label>Search By</label>
-                <select id="wlStatusSearchType" onchange="toggleWlStatusSearchField()">
-                    <option value="mobile">📱 Mobile Number</option>
-                    <option value="id">🎫 Waiting List ID</option>
-                </select>
-            </div>
-            <div class="input-group" id="wlStatusMobileGroup">
-                <label>Mobile Number</label>
-                <input type="number" id="wlStatusMobile" placeholder="Enter your registered mobile" oninput="if(value.length>10) value=value.slice(0,10); clearWlStatusResult();">
-            </div>
-            <div class="input-group" id="wlStatusIdGroup" style="display:none;">
-                <label>Waiting List ID</label>
-                <div class="reg-prefix-group">
-                    <span>WL</span>
-                    <input type="number" id="wlStatusId" placeholder="Enter 10 digits" oninput="if(value.length>10) value=value.slice(0,10); clearWlStatusResult();">
+        <div id="cs-panel-reg" style="display:none;">
+            <div class="input-group" style="margin-bottom:8px;">
+                <label>Application Reference</label>
+                <div class="reg-prefix-group"><span>APP</span>
+                    <input type="text" id="rsc-ref" inputmode="numeric" pattern="[0-9]*" maxlength="10" autocomplete="off" placeholder="Enter 10 digits" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10); rscClear()">
                 </div>
             </div>
-            <div class="error-msg" id="wl-status-err" style="display:none;"></div>
-            <button onclick="checkWlStatus()" style="background:#f59e0b;">🔍 Check Status</button>
+            <div class="input-group" style="margin-bottom:8px;">
+                <label>Mobile Number</label>
+                <input type="text" id="rsc-mobile" inputmode="numeric" pattern="[0-9]*" maxlength="10" autocomplete="off" placeholder="Enter 10-digit mobile number" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10); rscClear()" onkeydown="if(event.key==='Enter') regStatusCheck()">
+            </div>
+            <div class="error-msg" id="rsc-err" style="display:none;"></div>
+            <button onclick="regStatusCheck()" style="background:#0369a1;">🔍 Check Status</button>
+            <div id="rsc-result" style="margin-top:12px; font-size:0.76rem; line-height:1.55;"></div>
         </div>
-        <div id="wl-status-result" style="margin-top:14px;"></div>
     </div>
 </div>
 
@@ -9788,6 +9771,12 @@
         document.getElementById('pr-step2').style.display = 'none'; document.getElementById('pr-done').style.display = 'block';
         document.querySelector('#public-reg-modal > div').scrollTop = 0;
     }
+    // Public status screens never show the full Registration Number: REG + first 3 digits, rest hidden.
+    function maskRegNo(reg) {
+        const m = /^(REG)(\d{3})(\d*)$/.exec(String(reg || ''));
+        return m ? m[1] + m[2] + '*'.repeat(m[3].length) : String(reg || '');
+    }
+    const REG_CONTACT_NOTE = 'To get your full Registration Number, please contact the library.';
     function prCheckStatus() {
         const rawRef = (document.getElementById('csa-app-ref').value || '').replace(/\D/g, ''), mob = (document.getElementById('csa-app-mobile').value || '').replace(/\D/g, '');
         const out = document.getElementById('csa-app-result'); out.innerHTML = '';
@@ -9806,7 +9795,7 @@
             const we = (d.waitingList || []).find(w => w.id === r0.waitlistId);
             if (!we || we.status !== 'allocated') return r0;
             const sl = (d.config && d.config.seatLabels) || [];
-            return Object.assign({}, r0, { regNo: we.regNo || ('REG' + String(we.id).replace(/^WL/, '')), approvedSeat: we.allocatedSeat, approvedSeatLabel: sl[we.allocatedSeat - 1] || String(we.allocatedSeat) });
+            return Object.assign({}, r0, { regNo: we.regNo || '', approvedSeat: we.allocatedSeat, approvedSeatLabel: sl[we.allocatedSeat - 1] || String(we.allocatedSeat) });
         })();
         // Clear both fields after every valid search so nothing stays typed in; the result stays on screen.
         document.getElementById('csa-app-ref').value = ''; document.getElementById('csa-app-mobile').value = '';
@@ -9817,8 +9806,8 @@
         let head;
         const seatFreed = r.status === 'pending' && !r.waitlist && !r.seat && r.seatFreedInfo;
         if (r.status === 'pending') head = ['#fffbeb', '#fde68a', '#92400e', '🕓 <b>Awaiting library approval' + (r.waitlist ? ' (Waiting List request)' : '') + '</b>', (seatFreed ? 'Your seat has been freed by the admin. You will be allotted another seat when your request is accepted by the admin.' : (r.mode === 'Cash' ? 'Deposit ₹' + E(r.amount) + ' in cash at the library counter.' : 'The library will match your Transaction ID.'))];
-        else if (r.status === 'approved' && r.waitlist) head = ['#f0fdf4', '#bbf7d0', '#166534', (r.regNo ? '🎉 <b>Seat allotted</b>' : '✅ <b>Approved — you are on the Waiting List</b>'), (r.regNo ? 'Seat allotted! Log in with your Registration Number and mobile number.' : 'You will be allotted a seat automatically when one is free.')];
-        else if (r.status === 'approved') head = ['#f0fdf4', '#bbf7d0', '#166534', '✅ <b>Approved</b>', 'Log in with your Registration Number and mobile number.'];
+        else if (r.status === 'approved' && r.waitlist) head = ['#f0fdf4', '#bbf7d0', '#166534', (r.regNo ? '🎉 <b>Seat allotted</b>' : '✅ <b>Approved — you are on the Waiting List</b>'), (r.regNo ? 'Seat allotted! You can now log in with your Registration Number and mobile number.' : 'You will be allotted a seat automatically when one is free.')];
+        else if (r.status === 'approved') head = ['#f0fdf4', '#bbf7d0', '#166534', '✅ <b>Approved</b>', 'Your registration is approved. You can now log in with your Registration Number and mobile number.'];
         else head = ['#fef2f2', '#fecaca', '#991b1b', '❌ <b>Not approved</b>', 'Reason: ' + E(r.decisionReason || '—')];
         out.innerHTML =
             '<div style="background:' + head[0] + '; border:1px solid ' + head[1] + '; color:' + head[2] + '; border-radius:12px; padding:10px 12px; margin-bottom:8px;">' + head[3] + '<div style="font-size:0.72rem; margin-top:2px;">' + head[4] + '</div></div>' +
@@ -9826,7 +9815,7 @@
                 (r.photo ? '<div style="text-align:center; margin-bottom:8px;"><img src="' + r.photo + '" alt="Photo" style="width:72px; height:72px; object-fit:cover; border-radius:50%; border:2px solid #e2e8f0;"></div>' : '') +
                 '<table style="width:100%; border-collapse:collapse; font-size:0.74rem;">' +
                     row('Application Ref', '<span style="font-family:monospace;">' + E(r.ref) + '</span>') +
-                    (r.status === 'approved' && r.waitlistId ? row('Waiting List ID', '<span style="font-family:monospace; color:#166534;">' + E(r.waitlistId) + '</span>') : '') + (r.status === 'approved' && r.regNo ? row('Registration No.', '<span style="font-family:monospace; color:#166534;">' + E(r.regNo) + '</span>') : '') +
+                    (r.status === 'approved' && r.waitlistId ? row('Waiting List ID', '<span style="font-family:monospace; color:#166534;">' + E(r.waitlistId) + '</span>') : '') + (r.status === 'approved' && r.regNo ? row('Registration No.', '<span style="font-family:monospace; color:#166534;">' + E(maskRegNo(r.regNo)) + '</span><div style="font-size:0.66rem; font-weight:600; color:#64748b; margin-top:2px; line-height:1.4;">' + REG_CONTACT_NOTE + '</div>') : '') +
                     row('Student Name', E(r.name)) + row("Father's Name", E(r.fname)) + row('Mobile', E(r.mobile)) + row('Email', E(r.email || '—')) + row('Date of Birth', fmtDob(r.dob)) +
                     row('Shift', E(r.shiftName)) + row('Seat', r.waitlist ? (r.regNo ? E(r.approvedSeatLabel || '—') : 'Not allotted yet (Waiting List)') : seatFreed ? 'Seat freed by admin — another seat will be allotted on approval' : E(r.status === 'approved' ? (r.approvedSeatLabel || r.seatLabel) : r.seatLabel)) +
                     row('Fee', '₹' + E(r.amount)) + row('Payment Mode', r.mode === 'Cash' ? 'Cash at counter' : 'Online UPI (' + E(r.payApp || '—') + ')') +
@@ -10352,12 +10341,11 @@
                 logAllocation('AUTO ALLOCATION', entry, seatNo, ex.shiftName, trigger, 'Seat re-allotted to existing student ' + ex.regNo);
                 changed = true; continue;
             }
-            // The Waiting List ID becomes the Registration Number: same 10 digits, prefix
-            // swapped from WL to REG (e.g. WL1717262668 → REG1717262668). Falls back to a
-            // freshly generated number only in the rare case that digits were somehow already
-            // taken by another student by the time this entry gets allocated.
+            // The Waiting List ID stays a Waiting List ID; the student gets a completely separate, newly generated
+            // Registration Number (different digits from the WL ID).
             const wlDigits = entry.id.replace(/^WL/, '');
-            const regNo = students.some(s => s.regNo === 'REG' + wlDigits) ? 'REG' + generateUniqueRegDigits() : 'REG' + wlDigits;
+            let regDigits = generateUniqueRegDigits(); while (regDigits === wlDigits) regDigits = generateUniqueRegDigits();
+            const regNo = 'REG' + regDigits;
             const newStudent = {
                 id: regNo, regNo,
                 date: new Date().toISOString(),
@@ -15207,13 +15195,26 @@ function subAskAutoRenew(req, cb){
     }
 
     // ===== HELP CENTER =====
-    function openCheckStatusChooser() { document.getElementById('check-status-overlay').style.display = 'flex'; }
-    function closeCheckStatusChooser() { document.getElementById('check-status-overlay').style.display = 'none'; }
-    function openRegStatusCheck() {
-        document.getElementById('rsc-ref').value = ''; document.getElementById('rsc-mobile').value = '';
-        rscClear(); document.getElementById('reg-status-overlay').style.display = 'flex';
+    // One Check Status screen; the tabs (Waiting List | Registration) switch between the two checks, like Student | Admin on the login screen.
+    function csSetTab(which) {
+        const wl = which !== 'reg';
+        document.getElementById('cs-tab-wl').classList.toggle('active', wl);
+        document.getElementById('cs-tab-reg').classList.toggle('active', !wl);
+        document.getElementById('cs-panel-wl').style.display = wl ? 'block' : 'none';
+        document.getElementById('cs-panel-reg').style.display = wl ? 'none' : 'block';
     }
-    function closeRegStatusCheck() { document.getElementById('reg-status-overlay').style.display = 'none'; }
+    function openCheckStatusChooser(which) {
+        document.getElementById('wlStatusSearchType').value = 'mobile';
+        document.getElementById('wlStatusMobile').value = ''; document.getElementById('wlStatusId').value = '';
+        toggleWlStatusSearchField(); document.getElementById('wl-status-result').innerHTML = '';
+        const e1 = document.getElementById('wl-status-err'); if (e1) e1.style.display = 'none';
+        document.getElementById('rsc-ref').value = ''; document.getElementById('rsc-mobile').value = ''; rscClear();
+        csSetTab(which);
+        document.getElementById('check-status-overlay').style.display = 'flex';
+    }
+    function closeCheckStatusChooser() { document.getElementById('check-status-overlay').style.display = 'none'; }
+    function openRegStatusCheck() { openCheckStatusChooser('reg'); }
+    function closeRegStatusCheck() { closeCheckStatusChooser(); }
     function rscClear() { const e = document.getElementById('rsc-err'); if (e) e.style.display = 'none'; const r = document.getElementById('rsc-result'); if (r) r.innerHTML = ''; }
     // Registration status from the login page: finds the library that holds this application, then reuses the exact
     // same status screen the "New Student Registration" page uses (prCheckStatus), so both places always show the same thing.
@@ -15240,15 +15241,8 @@ function subAskAutoRenew(req, cb){
         document.getElementById('rsc-ref').value = ''; document.getElementById('rsc-mobile').value = '';
     }
 
-    function openWlStatusCheck() {
-        document.getElementById('wl-status-overlay').style.display = 'flex';
-        document.getElementById('wlStatusSearchType').value = 'mobile';
-        document.getElementById('wlStatusMobile').value = '';
-        document.getElementById('wlStatusId').value = '';
-        toggleWlStatusSearchField();
-        document.getElementById('wl-status-result').innerHTML = '';
-    }
-    function closeWlStatusCheck() { document.getElementById('wl-status-overlay').style.display = 'none'; }
+    function openWlStatusCheck() { openCheckStatusChooser('wl'); }
+    function closeWlStatusCheck() { closeCheckStatusChooser(); }
 
     // Wipes any previously shown error message OR search result the instant the person edits
     // either input — otherwise a stale "invalid number" error, or worse, an old search's result
@@ -15293,7 +15287,7 @@ function subAskAutoRenew(req, cb){
             const w = r.entry;
             let statusBadge, statusNote;
             if (w.status === 'waiting') { statusBadge = `<span style="background:#fef3c7; color:#92400e; padding:4px 10px; border-radius:20px; font-size:0.68rem; font-weight:800;">Position #${r.position} · Waiting</span>`; statusNote = `You'll be automatically allocated the next available seat in this shift.`; }
-            else if (w.status === 'allocated') { statusBadge = `<span style="background:#dcfce7; color:#166534; padding:4px 10px; border-radius:20px; font-size:0.68rem; font-weight:800;">🎉 Seat Allocated — ${(r.seatLabels && r.seatLabels[w.allocatedSeat - 1]) || w.allocatedSeat}</span>`; statusNote = `A seat has been allocated to you!<br><b style="color:#166534;">Registration No: ${w.regNo || ('REG' + String(w.id).replace(/^WL/, ''))}</b><br>Log in with this Registration Number and your mobile number to view full details.`; }
+            else if (w.status === 'allocated') { statusBadge = `<span style="background:#dcfce7; color:#166534; padding:4px 10px; border-radius:20px; font-size:0.68rem; font-weight:800;">🎉 Seat Allocated — ${(r.seatLabels && r.seatLabels[w.allocatedSeat - 1]) || w.allocatedSeat}</span>`; statusNote = `A seat has been allocated to you!<br><b style="color:#166534;">Registration No: ${w.regNo ? maskRegNo(w.regNo) : '\u2014'}</b><br><span style="font-size:0.7rem;">${REG_CONTACT_NOTE} Then log in with it and your mobile number.</span>`; }
             else { statusBadge = `<span style="background:#fee2e2; color:#991b1b; padding:4px 10px; border-radius:20px; font-size:0.68rem; font-weight:800;">${w.removedBy ? 'Removed by ' + w.removedBy : 'Cancelled'}</span>`; statusNote = `This Waiting List entry was removed${w.removedBy ? ' by ' + w.removedBy : ''}.` + (w.removedNote ? ' ' + w.removedNote + '.' : ''); }
             return `<div style="background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:10px;">
                 <div style="font-weight:800; font-size:0.85rem;">${r.libName}</div>
@@ -20722,7 +20716,6 @@ The **Library Lost & Found service is provided free of charge**. The Library doe
                     </div>
                     <div id="csa-app-result" style="margin-top:8px; font-size:0.76rem; line-height:1.55;"></div>
                 </details>
-                <button type="button" onclick="openWlStatusCheck()" style="margin:10px 0 0; background:#fff7ed; color:#9a3412; border:1.5px solid #fdba74; padding:9px; font-size:0.74rem;">⏳ Check Waiting List status</button>
             </div>
             </div>
         </div>
