@@ -1025,7 +1025,7 @@
         /* ===== QR SCANNER MODAL ===== */
         #qr-scanner-modal {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.92); z-index: 9999;
+            background: rgba(0,0,0,0.92); z-index: 10050;
             flex-direction: column; align-items: center; justify-content: flex-start;
             padding: 20px;
         }
@@ -4618,6 +4618,7 @@
         </div>
 
         <div id="cs-panel-wl">
+            <div style="font-size:0.74rem; color:var(--grey); margin:-2px 0 10px; line-height:1.5;">Your position, wait and allotted seat</div>
             <div id="wl-status-search-step">
                 <div class="input-group">
                     <label>Search By</label>
@@ -4644,6 +4645,7 @@
         </div>
 
         <div id="cs-panel-reg" style="display:none;">
+            <div style="font-size:0.74rem; color:var(--grey); margin:-2px 0 10px; line-height:1.5;">Status of the application you submitted online</div>
             <div class="input-group" style="margin-bottom:8px;">
                 <label>Application Reference</label>
                 <div class="reg-prefix-group"><span>APP</span>
@@ -8433,6 +8435,7 @@
     }
 
     function renderStudentDashboard() {
+        if (!loggedInStudent) return;
         const s = loggedInStudent;
         updateStudentNotifBell();
         document.getElementById('stu-display-photo').src = s.photo || '';
@@ -12411,6 +12414,7 @@ ${headset}
     function vekycCheckScheduleDue() {
         try {
             if (typeof _activeAdminId === 'undefined' || !_activeAdminId) return;
+            if (typeof loggedInStudent !== 'undefined' && loggedInStudent) return;   // a student session never shows the admin's eKYC banner
             const raw = localStorage.getItem(activeDbKey()); if (!raw) return;
             const d0 = JSON.parse(raw) || {}, w = d0.wallet || {};
             const GR = VEKYC_SCHEDULE_GRACE_MS, now = Date.now();
@@ -15348,9 +15352,9 @@ function subAskAutoRenew(req, cb){
 
     // ---- Step-by-step attendance screen for the login page (same information a student sees on the dashboard) ----
     // Step 1: registration number -> Step 2: today's status, the steps (Entry -> Exit), the rules and recent days -> action button.
-    // The marking itself is still done by submitMarkAttendanceFromLogin(), untouched.
-    let _maState = { digits: '', adminId: '', timer: null };
-    function maStopTimer() { if (_maState.timer) { clearInterval(_maState.timer); _maState.timer = null; } }
+    // Marking uses the dashboard's own QR scan + live selfie (blink check) + entry/exit functions - no shortcut path.
+    let _maState = { digits: '', adminId: '', timer: null, watch: null, flow: false };
+    function maStopTimer() { if (_maState.timer) { clearInterval(_maState.timer); _maState.timer = null; } if (_maState.watch) { clearInterval(_maState.watch); _maState.watch = null; } }
     function maBack() {
         maStopTimer();
         _maState.digits = ''; _maState.adminId = '';
@@ -15369,18 +15373,44 @@ function subAskAutoRenew(req, cb){
         maRenderPanel();
         maStopTimer(); _maState.timer = setInterval(() => { if (document.getElementById('mark-att-overlay').style.display !== 'none' && _maState.digits) maRenderPanel(); }, 20000);
     }
-    function maAction() {
-        document.getElementById('markAttReg').value = _maState.digits;      // the existing logic reads the registration number from this box
-        submitMarkAttendanceFromLogin();
-        document.getElementById('markAttReg').value = '';
-        maRenderPanel();
+    // Starts the very same QR-scan -> live selfie -> mark flow that the student dashboard uses.
+    // The library of this student is loaded exactly like a login does (but no dashboard is shown) and released again afterwards.
+    function maStartFlow(kind) {
+        const chk = maRenderPanel();                                  // fresh look at today's state; only the allowed step may start
+        if (!chk || chk.notice || chk.action !== kind) return;
+        const fullReg = 'REG' + _maState.digits;
+        const match = findStudentByRegAcrossLibraries(fullReg); if (!match) return;
+        loadFromLocal(match.adminId);
+        const found = students.find(x => x.regNo === fullReg);
+        if (!found) { loggedInStudent = null; _activeAdminId = null; return; }
+        loggedInStudent = found;
+        _maState.flow = true;
+        document.getElementById('mark-att-overlay').style.display = 'none';
+        if (kind === 'entry') startQRScan(); else startExitQRScan();
+        maWatchFlow();
+    }
+    function maWatchFlow() {
+        if (_maState.watch) clearInterval(_maState.watch);
+        let seenOpen = false, ticks = 0;
+        _maState.watch = setInterval(() => {
+            ticks++;
+            const cam = document.getElementById('cam-overlay'), ch = document.getElementById('exit-choice-modal');
+            const open = document.getElementById('qr-scanner-modal').classList.contains('open') || (cam && getComputedStyle(cam).display !== 'none') || (ch && ch.style.display === 'flex');
+            if (open) { seenOpen = true; return; }
+            if (seenOpen || ticks > 3) { clearInterval(_maState.watch); _maState.watch = null; maFinishFlow(); }
+        }, 500);
+    }
+    function maFinishFlow() {
+        loggedInStudent = null; _activeAdminId = null; _maState.flow = false;   // same as logging out
+        document.getElementById('mark-att-overlay').style.display = 'flex';
+        if (_maState.digits) maRenderPanel();
     }
     function maRenderPanel() {
-        const box = document.getElementById('mark-att-panel'); if (!box || !_maState.digits) return;
+        const box = document.getElementById('mark-att-panel'); if (!box || !_maState.digits) return { action: '', notice: 'x' };
         const fullReg = 'REG' + _maState.digits;
         let data = null; try { data = JSON.parse(localStorage.getItem(dbKeyFor(_maState.adminId)) || 'null'); } catch (e) {}
         const s = data && Array.isArray(data.students) ? data.students.find(x => x.regNo === fullReg) : null;
-        if (!s) { box.innerHTML = '<div style="color:#991b1b;font-weight:700;font-size:0.8rem;">Could not read your record right now.</div><button onclick="maBack()" style="background:#64748b;margin-top:10px;">← Back</button>'; return; }
+        if (!s) { box.innerHTML = '<div style="color:#991b1b;font-weight:700;font-size:0.8rem;">Could not read your record right now.</div><button onclick="maBack()" style="background:#64748b;margin-top:10px;">← Back</button>'; return { action: '', notice: 'x' }; }
         const now = new Date(), todayStr = getLocalDateStr(now.toISOString());
         const shifts = (data.config && data.config.shifts) || [], sh = shifts.find(x => x.id === s.shift);
         const curT = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
@@ -15412,24 +15442,19 @@ function subAskAutoRenew(req, cb){
             entryTxt = '✅ Marked at ' + tm(already.entry && already.entry.time);
             if (over) { exitTxt = '❌ Shift ended — Exit was not marked'; statusTxt = '❌ ABSENT'; statusCol = '#dc2626'; }
             else if (mins < 30) { exitTxt = '⏳ Opens at ' + tm(new Date(entryMs + 30 * 60000).toISOString()) + ' (in ' + (30 - mins) + ' min)'; statusTxt = '⏳ Exit Pending'; statusCol = '#d97706'; }
-            else { exitTxt = '🟢 Ready — you can mark Exit now'; statusTxt = '⏳ Exit Pending'; statusCol = '#d97706'; if (!notice) action = 'Exit'; }
+            else { exitTxt = '🟢 Ready — you can mark a Full Exit or a Partial Exit'; statusTxt = '⏳ Exit Pending'; statusCol = '#d97706'; if (!notice) action = 'exit'; }
         } else {
             exitTxt = '⏳ Available 30 minutes after Entry'; statusTxt = 'Not marked yet'; statusCol = '#64748b';
             if (notice) entryTxt = '🚫 Not available today';
             else if (!sh || !started) { entryTxt = '⏳ Opens at ' + (sh && sh.start ? time12(sh.start) : 'shift start'); }
             else if (over) { entryTxt = '❌ Shift has ended for today'; statusTxt = '❌ ABSENT'; statusCol = '#dc2626'; }
-            else { entryTxt = '🟢 Ready — you can mark Entry now'; action = 'Entry'; }
+            else { entryTxt = '🟢 Ready — you can mark Entry now'; action = 'entry'; }
         }
         const row = (n, label, val) => '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid #e2e8f0;"><div style="flex:0 0 24px;height:24px;border-radius:50%;background:#2563eb;color:#fff;font-size:0.72rem;font-weight:800;display:flex;align-items:center;justify-content:center;">' + n + '</div><div style="flex:1;min-width:0;"><div style="font-size:0.72rem;font-weight:800;color:#64748b;">' + label + '</div><div style="font-size:0.8rem;font-weight:700;color:#0f172a;line-height:1.4;">' + val + '</div></div></div>';
-        const recent = atts.filter(a => a.regNo === fullReg).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5).map(a => {
-            let t;
-            if (a.status === 'HOLIDAY') t = '🏖️ Holiday';
-            else if (a.status === 'ABSENT' || a.attStatus === 'invalid') t = '❌ Absent';
-            else if (a.attStatus === 'completed') t = '✅ Present (' + tm(a.entry && a.entry.time) + ' – ' + tm(a.exit && a.exit.time) + ')';
-            else if (a.attStatus === 'pending_exit') t = '⏳ Exit pending (Entry ' + tm(a.entry && a.entry.time) + ')';
-            else t = '\u2014';
-            return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:0.72rem;padding:5px 0;border-bottom:1px dashed #e2e8f0;"><span style="color:#64748b;">' + formatAppDate(a.date) + '</span><span style="font-weight:700;text-align:right;">' + t + '</span></div>';
-        }).join('');
+        const partialUsed = st === 'pending_exit' ? studentPartialUsed(already) : 0;
+        const partialBox = (st === 'pending_exit' && !over)
+            ? '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:7px 10px;margin:10px 0 2px;font-size:0.72rem;font-weight:800;color:#3730a3;"><span>🚶 Partial exits today</span><span>' + Array.from({ length: MAX_PARTIAL_EXITS }, (_, k) => '<i style="display:inline-block;width:9px;height:9px;border-radius:50%;margin-left:3px;background:' + (k < partialUsed ? '#4f46e5' : '#c7d2fe') + ';"></i>').join('') + ' <b style="margin-left:6px;">' + partialUsed + ' / ' + MAX_PARTIAL_EXITS + '</b></span>' + ((already.partialExits || []).length ? '<div style="flex-basis:100%;text-align:left;font-size:0.64rem;font-weight:700;color:#4338ca;">Last out: ' + formatAppTime(already.partialExits[already.partialExits.length - 1].time) + '</div>' : '') + '</div>'
+            : '';
         box.innerHTML =
             '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 14px;margin-bottom:12px;">' +
               '<div style="font-weight:800;font-size:0.95rem;color:#1e3a8a;">' + prEsc(s.name) + '</div>' +
@@ -15439,10 +15464,11 @@ function subAskAutoRenew(req, cb){
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><span style="font-size:0.72rem;font-weight:800;color:#64748b;">TODAY &middot; ' + formatAppDate(now.toISOString()) + '</span><span style="font-size:0.8rem;font-weight:800;color:' + statusCol + ';">' + statusTxt + '</span></div>' +
             (notice ? '<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:10px 12px;font-size:0.76rem;font-weight:700;line-height:1.5;margin-bottom:8px;">' + notice + '</div>' : '') +
             row('1', 'ENTRY', entryTxt) + row('2', 'EXIT', exitTxt) +
-            (action ? '<button onclick="maAction()" style="background:#16a34a;margin-top:12px;">✅ Mark ' + action + ' Attendance</button>' : '') +
-            '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:0.7rem;color:#475569;line-height:1.55;"><b>How it works:</b> mark Entry once your shift has started; mark Exit at least 30 minutes after Entry and before your shift ends. If Exit is not marked in time, the day counts as Absent.</div>' +
-            (recent ? '<div style="margin-top:12px;"><div style="font-size:0.7rem;font-weight:800;color:#64748b;margin-bottom:4px;">RECENT ATTENDANCE</div>' + recent + '</div>' : '') +
+            partialBox +
+            (action === 'entry' ? '<button onclick="maStartFlow(\'entry\')" style="background:#2563eb;margin-top:12px;">🔲 Scan QR & Mark Entry</button>' : '') +
+            (st === 'pending_exit' && !over ? '<button onclick="maStartFlow(\'exit\')" style="background:' + (action === 'exit' ? '#d97706' : '#94a3b8') + ';margin-top:8px;"' + (action === 'exit' ? '' : ' disabled') + '>🚪 Mark Exit (Full / Partial)</button>' : '') +
             '<div style="display:flex;gap:8px;margin-top:12px;"><button onclick="maRenderPanel()" style="background:#0ea5e9;margin:0;flex:1;padding:10px;font-size:0.76rem;">🔄 Refresh</button><button onclick="maBack()" style="background:#64748b;margin:0;flex:1;padding:10px;font-size:0.76rem;">← Change number</button></div>';
+        return { action: action, notice: notice };
     }
     function clearMarkAttResult() { document.getElementById('mark-att-result').innerHTML = ''; }
 
@@ -15476,154 +15502,6 @@ function subAskAutoRenew(req, cb){
             students = data.students || [];
             if (typeof renderStudentDashboard === 'function' && loggedInStudent) renderStudentDashboard();
         }
-    }
-
-    function submitMarkAttendanceFromLogin() {
-        hideError('err-mark-att-reg');
-        clearMarkAttResult();
-        const digits = document.getElementById('markAttReg').value.trim();
-        if (!/^\d{10}$/.test(digits)) {
-            document.getElementById('err-mark-att-reg').style.display = 'block';
-            return;
-        }
-        const fullReg = 'REG' + digits;
-        const submitBtn = document.getElementById('mark-att-submit-btn');
-        submitBtn.disabled = true;
-
-        const match = findStudentByRegAcrossLibraries(fullReg);
-        if (!match) {
-            markAttResultMsg('❌ No student found with this registration number. Please check the number and try again.', false);
-            submitBtn.disabled = false;
-            return;
-        }
-
-        const key = dbKeyFor(match.adminId);
-        let data;
-        try { data = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { data = null; }
-        if (!data || !Array.isArray(data.students)) {
-            markAttResultMsg('❌ Could not read library records right now. Please try again.', false);
-            submitBtn.disabled = false;
-            return;
-        }
-        const s = data.students.find(x => x.regNo === fullReg);
-        if (!s) {
-            markAttResultMsg('❌ No student found with this registration number. Please check the number and try again.', false);
-            submitBtn.disabled = false;
-            return;
-        }
-        if (s.isBlocked) {
-            markAttResultMsg('🔒 Your dashboard has been blocked by the library administration. Please contact the library for assistance.', false);
-            submitBtn.disabled = false;
-            return;
-        }
-        if (s.isDemo) {
-            markAttResultMsg('⚠ Attendance will be trackable once your registration is confirmed by the library.', false);
-            submitBtn.disabled = false;
-            return;
-        }
-
-        const now = new Date();
-        const todayStr = getLocalDateStr(now.toISOString());
-
-        const holidayNotice = getAttBlockReasonRaw(data, s, todayStr);
-        if (holidayNotice) {
-            markAttResultMsg(`🏖️ ${holidayNotice.title}: attendance is disabled today.`, false);
-            submitBtn.disabled = false;
-            return;
-        }
-
-        let dueDate = new Date(s.date);
-        if (s.feeHistory && s.feeHistory.length > 0) {
-            const lastFee = [...s.feeHistory].sort((a, b) => new Date(b.month) - new Date(a.month))[0];
-            dueDate = new Date(lastFee.month + '-01');
-            dueDate.setMonth(dueDate.getMonth() + 1);
-            dueDate.setDate(new Date(s.date).getDate());
-        } else {
-            dueDate.setDate(dueDate.getDate() + 30);
-        }
-        if (now > dueDate) {
-            markAttResultMsg('⚠ Your fees are overdue. Please pay your fees to mark attendance.', false);
-            submitBtn.disabled = false;
-            return;
-        }
-
-        const shifts = (data.config && data.config.shifts) || [];
-        const sh = shifts.find(x => x.id === s.shift);
-        const currentTimeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-        const isShiftStarted = sh && sh.start && currentTimeStr >= sh.start;
-        const isShiftOver = sh && sh.end && currentTimeStr > sh.end;
-
-        if (!Array.isArray(data.attendances)) data.attendances = [];
-        const already = data.attendances.find(a => a.regNo === fullReg && getLocalDateStr(a.date) === todayStr);
-
-        // ----- EXIT (entry already marked today, pending exit) -----
-        if (already && already.attStatus === 'pending_exit') {
-            if (isShiftOver) {
-                already.attStatus = 'invalid';
-                localStorage.setItem(key, JSON.stringify(data));
-                syncMarkAttToActive(match.adminId, data);
-                markAttResultMsg(`❌ ${s.name}, the shift has ended and Exit was not marked in time. Today's attendance is marked Absent.`, false);
-                submitBtn.disabled = false;
-                return;
-            }
-            const entryTimeMs = already.entry ? new Date(already.entry.time).getTime() : new Date(already.date).getTime();
-            const minsSinceEntry = Math.floor((now.getTime() - entryTimeMs) / 60000);
-            if (minsSinceEntry < 30) {
-                markAttResultMsg(`⏳ Entry was already marked at ${formatAppTime(already.entry ? already.entry.time : already.date)}. Exit can be marked after 30 minutes — please wait ${30 - minsSinceEntry} more minute(s).`, false);
-                submitBtn.disabled = false;
-                return;
-            }
-            already.exit = { time: now.toISOString(), photo: null };
-            already.durationMinutes = minsSinceEntry;
-            already.attStatus = 'completed';
-            localStorage.setItem(key, JSON.stringify(data));
-            syncMarkAttToActive(match.adminId, data);
-            markAttResultMsg(`✅ Exit Attendance Marked for ${s.name}!\nDuration: ${minsSinceEntry} minute(s). Today's attendance is complete.`, true);
-            document.getElementById('markAttReg').value = '';
-            submitBtn.disabled = false;
-            return;
-        }
-
-        if (already && already.attStatus === 'completed') {
-            markAttResultMsg(`✅ ${s.name}, today's attendance is already complete.\nEntry: ${already.entry ? formatAppTime(already.entry.time) : '—'} | Exit: ${already.exit ? formatAppTime(already.exit.time) : '—'}`, true);
-            submitBtn.disabled = false;
-            return;
-        }
-        if (already && already.attStatus === 'invalid') {
-            markAttResultMsg(`❌ ${s.name}, today's attendance was marked Absent (Exit wasn't completed in time).`, false);
-            submitBtn.disabled = false;
-            return;
-        }
-
-        // ----- ENTRY (nothing marked yet today) -----
-        if (!isShiftStarted) {
-            markAttResultMsg(`⏳ Attendance is available only after your shift starts${sh && sh.start ? ' (' + time12(sh.start) + ')' : ''}.`, false);
-            submitBtn.disabled = false;
-            return;
-        }
-        if (isShiftOver) {
-            markAttResultMsg('❌ Your shift has ended for today. Attendance can no longer be marked.', false);
-            submitBtn.disabled = false;
-            return;
-        }
-
-        data.attendances = data.attendances.filter(a => !(a.regNo === fullReg && getLocalDateStr(a.date) === todayStr && a.status === 'ABSENT'));
-        data.attendances.push({
-            regNo: fullReg,
-            name: s.name,
-            date: now.toISOString(),
-            photo: null,
-            status: 'PRESENT',
-            attStatus: 'pending_exit',
-            entry: { time: now.toISOString(), photo: null, qrVerified: false },
-            exit: null,
-            durationMinutes: null
-        });
-        localStorage.setItem(key, JSON.stringify(data));
-        syncMarkAttToActive(match.adminId, data);
-        markAttResultMsg(`✅ Entry Attendance Marked for ${s.name}!\nYou can mark Exit Attendance after 30 minutes — just enter your Registration Number here again.`, true);
-        document.getElementById('markAttReg').value = '';
-        submitBtn.disabled = false;
     }
 
     function openHelpCenter() {
